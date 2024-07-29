@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carousel</title>
+    <style>
+        .carousel-container {
+            position: relative;
+            width: 100%;
+            max-width: 1200px;
+            margin: auto;
+            overflow: hidden;
+            border-radius: 10px; /* 去棱角化 */
+            aspect-ratio: 16 / 8; /* 锁定宽高比 */
+           
+        }
+
+        .carousel-images {
+            display: flex;
+            transition: transform 0.5s ease;
+            height: 100%;
+        }
+
+        .carousel-images img {
+            width: 100%;
+            object-fit: cover; /* 使图片适应容器 */
+            flex-shrink: 0;
+            border-radius: 10px; /* 去棱角化 */
+        }
+
+        .indicators {
+            position: absolute;
+            bottom: 13px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 5px;
+        }
+
+        .carousel-title {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px; /* 去棱角化 */
+            font-size: 18px;
+            max-width: 80%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .indicators span {
+            display: block;
+            width: 10px;
+            height: 10px;
+            background-color: white;
+            border-radius: 50%;
+            opacity: 0.5;
+            transition: opacity 0.3s;
+        }
+
+        .indicators .active {
+            transform: scale(1.2);
+            opacity: 1;
+        }
+
+        .indicators span.active {
+            background-color: red; /* Active indicator color */
+        }
+
+        
+
+        .carousel-button {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: rgba(0, 0, 0, 0);
+            border: none;
+            color: white;
+            font-size: 24px;
+            padding: 10px;
+            z-index: 10;
+            outline: none; /* 去除点击后的外边框 */
+        }
+
+        .carousel-button:active,
+        .carousel-button:focus,
+        .carousel-button:hover {
+            background-color: rgba(0, 0, 0, 0); /* 保持背景颜色一致 */
+            color: white; /* 保持文字颜色一致 */
+        }
+
+        .clicked {
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+        }
+
+        #prev {
+            left: 10px;
+        }
+
+        #next {
+            right: 10px;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="carousel-container">
+        <div class="carousel-images"></div>
+        <div class="carousel-title"></div>
+        <button id="prev" class="carousel-button">&#10094;</button>
+        <button id="next" class="carousel-button">&#10095;</button>
+        <div class="indicators"></div>
+    </div>
+    <script>
+      document.addEventListener("DOMContentLoaded", function() {
+    const carouselImages = document.querySelector('.carousel-images');
+    const carouselTitle = document.querySelector('.carousel-title');
+    const indicators = document.querySelector('.indicators');
+    const prevButton = document.getElementById('prev');
+    const nextButton = document.getElementById('next');
+    let currentIndex = 0;
+    let images = [];
+    let autoSlideInterval;
+    let isAnimating = false;
+
+    initData();
+    setTimeout(initCarousel, 1000);
+
+    function initData() {
+        try {
+            const html = request("https://www.kkys01.com");
+            const json = fba.parseDomForArray(html, '.carousel-box&&.swiper-wrapper&&.swiper-slide');
+            const arr = JSON.parse(json);
+            const list = arr.map(item => ({
+                img: 'https://61.147.93.252:15002' + fba.parseDomForHtml(item, 'img&&data-original'),
+                url: 'https://www.kkys01.com' + fba.parseDomForHtml(item, 'a&&href'),
+                title: fba.parseDomForHtml(item, '.carousel-item-title&&Text'),
+                desc: fba.parseDomForHtml(item, '.carousel-item-tags&&Text')
+            }));
+            localStorage.setItem('imageList', JSON.stringify(list));
+        } catch (e) {
+            console.error('Error fetching data:', e);
+        }
+    }
+
+
+    function initCarousel() {
+        const imageList = JSON.parse(localStorage.getItem('imageList')) || [];
+        imageList.forEach((item, index) => {
+            const imgElement = document.createElement('img');
+            imgElement.src = item.img;
+            imgElement.alt = item.title;
+            imgElement.dataset.url = item.url;
+            imgElement.dataset.title = item.title;
+            carouselImages.appendChild(imgElement);
+
+            const indicator = document.createElement('span');
+            indicator.dataset.index = index;
+            indicators.appendChild(indicator);
+        });
+
+        images = document.querySelectorAll('.carousel-images img');
+        updateIndicators();
+        updateTitle();
+        cloneImages();
+        setupClickEvents();
+        startAutoSlide();
+    }
+
+    function updateIndicators() {
+        document.querySelectorAll('.indicators span').forEach(indicator => {
+            indicator.classList.remove('active');
+        });
+        document.querySelector(`.indicators span[data-index="${currentIndex % images.length}"]`).classList.add('active');
+    }
+
+    function updateTitle() {
+        const currentImage = images[currentIndex % images.length];
+        carouselTitle.textContent = currentImage ? currentImage.dataset.title : '';
+    }
+
+    function cloneImages() {
+        carouselImages.appendChild(images[0].cloneNode(true));
+        carouselImages.insertBefore(images[images.length - 1].cloneNode(true), images[0]);
+        carouselImages.style.transform = `translateX(-100%)`;
+    }
+
+    function nextImage() {
+        if (isAnimating) return;
+        isAnimating = true;
+        currentIndex++;
+        updateSlide();
+        if (currentIndex === images.length) {
+            carouselImages.addEventListener('transitionend', resetToFirstImage, { once: true });
+        }
+    }
+
+    function prevImage() {
+        if (isAnimating) return;
+        isAnimating = true;
+        currentIndex--;
+        updateSlide();
+        if (currentIndex === -1) {
+            carouselImages.addEventListener('transitionend', resetToLastImage, { once: true });
+        }
+    }
+
+    function updateSlide() {
+        carouselImages.style.transition = 'transform 0.5s ease';
+        carouselImages.style.transform = `translateX(-${(currentIndex + 1) * 100}%)`;
+        updateIndicators();
+        updateTitle();
+        setTimeout(() => isAnimating = false, 500);
+    }
+
+    function resetToFirstImage() {
+        carouselImages.style.transition = 'none';
+        currentIndex = 0;
+        carouselImages.style.transform = `translateX(-100%)`;
+        setTimeout(() => {
+            carouselImages.style.transition = 'transform 0.5s ease';
+            isAnimating = false;
+        }, 50);
+        updateIndicators();
+        updateTitle();
+    }
+
+    function resetToLastImage() {
+        carouselImages.style.transition = 'none';
+        currentIndex = images.length - 1;
+        carouselImages.style.transform = `translateX(-${(currentIndex + 1) * 100}%)`;
+        setTimeout(() => {
+            carouselImages.style.transition = 'transform 0.5s ease';
+            isAnimating = false;
+        }, 50);
+        updateIndicators();
+        updateTitle();
+    }
+
+    function setupClickEvents() {
+        carouselImages.addEventListener('click', (e) => {
+            if (e.target.tagName === 'IMG') {
+                const img = e.target;
+                img.classList.add('clicked');
+                setTimeout(() => {
+                    img.classList.remove('clicked');
+                    window.location.href = img.dataset.url;
+                }, 300);
+            }
+        });
+    }
+
+    function startAutoSlide() {
+        autoSlideInterval = setInterval(nextImage, 3000);
+    }
+
+    function stopAutoSlide() {
+        clearInterval(autoSlideInterval);
+    }
+
+    prevButton.addEventListener('click', () => {
+        if (isAnimating) return;
+        if (currentIndex === 0) {
+            carouselImages.style.transition = 'none';
+            currentIndex = images.length;
+            carouselImages.style.transform = `translateX(-${(currentIndex + 1) * 100}%)`;
+            setTimeout(() => {
+                prevImage();
+                stopAutoSlide();
+                startAutoSlide();
+            }, 50);
+        } else {
+            prevImage();
+            stopAutoSlide();
+            startAutoSlide();
+        }
+    });
+
+    nextButton.addEventListener('click', () => {
+        nextImage();
+        stopAutoSlide();
+        startAutoSlide();
+    });
+
+    indicators.addEventListener('click', (e) => {
+        if (e.target.dataset.index && !isAnimating) {
+            currentIndex = Number(e.target.dataset.index);
+            updateSlide();
+            stopAutoSlide();
+            startAutoSlide();
+        }
+    });
+
+    carouselImages.addEventListener('mouseenter', stopAutoSlide);
+    carouselImages.addEventListener('mouseleave', startAutoSlide);
+});
+
+    </script>
+</body>
+</html>
